@@ -1,0 +1,93 @@
+{
+    "bs_all": null,
+    "bs_protocols": {
+        "CloseProtocol": [],
+        "HandleProtocol": [],
+        "InstallMultipleProtocolInterfaces": [],
+        "InstallProtocolInterface": [],
+        "LocateHandleBuffer": [],
+        "LocateProtocol": [
+            1403
+        ],
+        "OpenProtocol": [],
+        "OpenProtocolInformation": [],
+        "ProtocolsPerHandle": [],
+        "RegisterProtocolNotify": [],
+        "ReinstallProtocolInterface": [],
+        "UninstallMultipleProtocolInterfaces": [],
+        "UninstallProtocolInterface": []
+    },
+    "gBS": [
+        2672
+    ],
+    "gImageHandle": [],
+    "gRT": [],
+    "gST": [],
+    "gSmst": [
+        2712
+    ],
+    "pei_all": null,
+    "protocols": [
+        {
+            "address": 1568,
+            "guid": [
+                4107059127,
+                63200,
+                18429,
+                157,
+                212,
+                16,
+                168,
+                241,
+                80,
+                193,
+                145
+            ],
+            "prot_name": "EFI_SMM_BASE2_PROTOCOL_GUID",
+            "service": "LocateProtocol",
+            "xref": 1396
+        },
+        {
+            "address": 1584,
+            "guid": [
+                413386460,
+                24298,
+                18632,
+                161,
+                193,
+                181,
+                51,
+                137,
+                249,
+                137,
+                153
+            ],
+            "prot_name": "EFI_SMM_SW_DISPATCH2_PROTOCOL_GUID",
+            "service": "SmmLocateProtocol",
+            "xref": 1459
+        }
+    ],
+    "rt_all": null,
+    "smi_handlers": [
+        608,
+        608
+    ],
+    "smm_all": {
+        "SmiHandlerRegister": [
+            1544
+        ],
+        "SmmLocateProtocol": [
+            1466
+        ]
+    },
+    "smm_protocols": {
+        "SmmHandleProtocol": [],
+        "SmmInstallProtocolInterface": [],
+        "SmmLocateHandle": [],
+        "SmmLocateProtocol": [
+            1466
+        ],
+        "SmmRegisterProtocolNotify": [],
+        "SmmUninstallProtocolInterface": []
+    }
+}
