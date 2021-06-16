@@ -56,6 +56,7 @@ __int64 __fastcall qword_388(__int64 a1, __int64 a2, __int64 a3)
                 if (*(unsigned char *)(a3 + 8) == SW_SMI_VAL)
                 {
                         /*
+                        GenerateBeep(5);
 
                         unsigned __int64 v3 = __readmsr(0xC0010015);
                         if ( !(v3 & 1) )
@@ -313,6 +314,12 @@ BOOLEAN cs_SetConVarFloat(DWORD convar, DWORD value)
 	return vm_write_i32(convar + 0x2C, *(DWORD*)&value ^ convar);
 }
 
+typedef struct _CONTROL_REGS
+{
+    UINTN Cr0, Cr3, Cr4;
+} CONTROL_REGS,
+*PCONTROL_REGS;
+
 EFI_HANDLE EfiMainHandlerHandle;
 EFI_STATUS EFIAPI EfiMainHandler(
   IN EFI_HANDLE  DispatchHandle,
@@ -323,10 +330,27 @@ EFI_STATUS EFIAPI EfiMainHandler(
 {
 
         if (!gInOs) {
+
+                EFI_SMM_CPU_PROTOCOL *SmmCpu = NULL;
+                EFI_SMM_SYSTEM_TABLE2 *SMST = (EFI_SMM_SYSTEM_TABLE2 *)gSMST;
+
+                if (EFI_ERROR(SMST->SmmLocateProtocol(&gEfiSmmCpuProtocolGuid, NULL, (VOID **)&SmmCpu)))
+                        return 0;
+
+                UINTN cr3;
+                if (EFI_ERROR(SmmCpu->ReadSaveState(SmmCpu,
+                        sizeof(cr3), EFI_SMM_SAVE_STATE_REGISTER_CR3, SMST->CurrentlyExecutingCpu, (VOID*)&cr3)))
+                        return 0;
+
+                if (cr3 == 0)
+                        return 0;
+
                 system_cr3 = *(QWORD*)(0x10A0);
                 ntoskrnl = *(QWORD*)(0x1070);
+                if (system_cr3 == 0)
+                        return 0;
 
-                if (system_cr3 != 0x1AD000 || ntoskrnl == 0)
+                if (system_cr3 != cr3 || ntoskrnl == 0)
                         return 0;
 
                 ntoskrnl = ntoskrnl &~(QWORD)(0xfffff);
@@ -383,36 +407,10 @@ EFI_STATUS EFIAPI EfiMainHandler(
                         return EFI_SUCCESS;
 
                 /* cs_SetConVarInt(client_dll + 0xd81cb0, 1); : NAMETAG */
-
                 cs_SetConVarInt(client_dll + 0xd93250, 1); /* cl_countbones */
                 cs_SetConVarFloat(client_dll + 0xdaabb0, 1065353216); /* cl_crosshair_recoil */
 
-                /*
-                DWORD vstdlib_dll = (DWORD)vm_get_module(0xdffb8bb7, 24);
-                if (vstdlib_dll == 0)
-                        return EFI_SUCCESS;
-
-                *(DWORD*)(0x10000000) = vstdlib_dll;
-
-                
-                DWORD vt_cvar = get_interface(get_interface_factory(vstdlib_dll), 0x3FD1354C, 12);
-                if (vt_cvar == 0)
-                        return EFI_SUCCESS;
-
-                *(DWORD*)(0x10000000) = 0x1338;
-
-                DWORD cl_crosshair_recoil = cs_FindConVar(vt_cvar, 0xf5f68cdb, 20);
-                DWORD r_drawmodelnames = cs_FindConVar(vt_cvar, 0x62d8cd97, 17);
-                // cl_countbones
-                if (cl_crosshair_recoil == 0 || r_drawmodelnames == 0)
-                        return EFI_SUCCESS;
-
-                cs_SetConVarInt(cl_crosshair_recoil, 1);
-                cs_SetConVarInt(r_drawmodelnames, 1);
-                *(DWORD*)(0x10000000) = 0x1339;*/
         }
-
-
         return EFI_SUCCESS;
 }
 
@@ -469,7 +467,7 @@ EFI_STATUS EFIAPI EfiMain(IN EFI_LOADED_IMAGE *LoadedImage, IN EFI_SYSTEM_TABLE 
 
 
 /*
-!EFI_SMM_SYSTEM_TABLE2
+0: kd> dt demo!EFI_SMM_SYSTEM_TABLE2 0`887f9730
    +0x000 Hdr : EFI_TABLE_HEADER
    +0x018 SmmFirmwareVendor : (null) 
    +0x020 SmmFirmwareRevision : 0
@@ -499,6 +497,26 @@ EFI_STATUS EFIAPI EfiMain(IN EFI_LOADED_IMAGE *LoadedImage, IN EFI_SYSTEM_TABLE 
 
 
 /*
+PLAN: 
+
+gEfiSmmPeriodicTimerDispatch2ProtocolGuid = { 0x4cec368e, 0x8e8e, 0x4d71, {0x8b, 0xe1, 0x95, 0x8c, 0x45, 0xfc, 0x8a, 0x53 }}
+Status = gSMST->SmmLocateProtocol (
+	&gEfiSmmPeriodicTimerDispatch2ProtocolGuid,
+	NULL,
+	(VOID **)&gSmmPeriodicTimerDispatch2
+	);
+
+
+EFI_SMM_PERIODIC_TIMER_REGISTER_CONTEXT m_PeriodicTimerDispatch2RegCtx = { 1000000, 640000 };
+Status = gSmmPeriodicTimerDispatch2->Register(
+	gSmmPeriodicTimerDispatch2, 
+	PeriodicTimerDispatch2Handler, 
+	&m_PeriodicTimerDispatch2RegCtx,
+	DispatchHandle
+	);
+
+
+dword_244=0x320
 
 __int64 __fastcall qword_388(__int64 a1, __int64 a2, __int64 a3)
 {
