@@ -22,7 +22,12 @@ QWORD map_end;
 #define SW_SMI_VAL 0x56
 
 DWORD crc32(CHAR8 *buf, DWORD len, DWORD init);
-extern DWORD g_encryption_key ;
+
+
+EFI_RUNTIME_SERVICES *gRT;
+EFI_BOOT_SERVICES    *gBS;
+EFI_SYSTEM_TABLE     *gST;
+extern DWORD         g_encryption_key ;
 
 /*
         SmmHandler ( ControlSVM from UserMode? ) 
@@ -312,6 +317,7 @@ BOOLEAN cs_SetConVarFloat(DWORD convar, DWORD value)
 
 BOOLEAN gPatchIsDone;
 EFI_HANDLE EfiMainHandlerHandle;
+
 EFI_STATUS EFIAPI EfiMainHandler(
   IN EFI_HANDLE  DispatchHandle,
   IN CONST VOID  *Context         OPTIONAL,
@@ -398,6 +404,7 @@ EFI_STATUS EFIAPI EfiMainHandler(
 
                 if (g_process_peb == 0)
                         return EFI_SUCCESS;
+
 
 		DWORD vstdlib = (DWORD)vm_get_module(0xdffb8bb7, 24);
 		if (vstdlib == 0)
@@ -490,6 +497,7 @@ BOOLEAN GetPhysicalMemoryRanges(QWORD *start_address, QWORD *end_address)
 
 	return TRUE;
 }
+
 
 EFI_STATUS EFIAPI EfiMain(IN EFI_LOADED_IMAGE *LoadedImage, IN EFI_SYSTEM_TABLE *SystemTable)
 {
