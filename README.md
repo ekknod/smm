@@ -10,3 +10,6 @@ GUID: 5CEBCDE6-1096-4FE2-9921-5F8E25281A3E
 - Flash new BIOS (Suggest to have motherboard with Flashback feature)  
 - Open CS:GO and after that put your PC at sleep mode  
 - Wake up your PC, wallhack should be now activated  
+
+# Video:
+https://streamable.com/58y7zz
