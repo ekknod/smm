@@ -12,4 +12,7 @@ GUID: 5CEBCDE6-1096-4FE2-9921-5F8E25281A3E
 - Wake up your PC, wallhack should be now activated  
 
 # Video:
-https://streamable.com/58y7zz
+https://streamable.com/58y7zz  
+
+# Screenshots (UEFITool 0.26.0)
+https://imgur.com/a/3JNp62u
