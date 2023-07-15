@@ -7,19 +7,24 @@
 	- this doesn't always work at first try, if its not working, pleace do sleep again
 */
 
-CHAR8 *gEfiCallerBaseName = "";
+CHAR8 *gEfiCallerBaseName = "SMMCS";
 EFI_GUID gEfiSmmBase2ProtocolGuid = { 0xf4ccbfb7, 0xf6e0, 0x47fd, { 0x9d, 0xd4, 0x10, 0xa8, 0xf1, 0x50, 0xc1, 0x91 }};
 EFI_GUID gEfiSmmSwDispatch2ProtocolGuid = { 0x18a3c6dc, 0x5eea, 0x48c8, {0xa1, 0xc1, 0xb5, 0x33, 0x89, 0xf9, 0x89, 0x99 }};
 EFI_GUID gEfiSmmCpuProtocolGuid = { 0xeb346b97, 0x975f, 0x4a9f, { 0x8b, 0x22, 0xf8, 0xe9, 0x2b, 0xb3, 0xd5, 0x69 }};
 /* EFI_GUID gEfiSmmPeriodicTimerDispatch2ProtocolGuid = { 0x4cec368e, 0x8e8e, 0x4d71, {0x8b, 0xe1, 0x95, 0x8c, 0x45, 0xfc, 0x8a, 0x53 }}; */
 
-QWORD gSmmBase2Protocol;
-QWORD gSMST;
-QWORD gSmmSwDispatch2Protocol;
+EFI_SMM_BASE2_PROTOCOL *gSmmBase2Protocol;
+EFI_SMM_SYSTEM_TABLE2 *gSMST;
+EFI_SMM_SW_DISPATCH2_PROTOCOL *gSmmSwDispatch2Protocol;
+
 QWORD map_begin;
 QWORD map_end;
 
 #define SW_SMI_VAL 0x56
+
+// Hardware Configuration Register (HWCR)
+// Refer to AMD "BIOS and Developers Guide (BKDG)" for register layout
+#define MSR_K7_HWCR	0xC0010015UL
 
 DWORD crc32(CHAR8 *buf, DWORD len, DWORD init);
 
@@ -27,7 +32,7 @@ DWORD crc32(CHAR8 *buf, DWORD len, DWORD init);
 EFI_RUNTIME_SERVICES *gRT;
 EFI_BOOT_SERVICES    *gBS;
 EFI_SYSTEM_TABLE     *gST;
-extern DWORD         g_encryption_key ;
+extern DWORD         g_encryption_key;
 
 /*
         SmmHandler ( ControlSVM from UserMode? ) 
@@ -51,13 +56,10 @@ unsigned __int64 dword_244()
 {
         unsigned __int64 result; // rax
 
-        result = __readmsr(0xC0010015) | 1;
-        __writemsr(0xC0010015, result);
+        result = __readmsr(MSR_K7_HWCR) | 1; // SMM Lock?
+        __writemsr(MSR_K7_HWCR, result);
         return result;
 }
-
-
-
 
 
 /*
@@ -73,20 +75,18 @@ __int64 __fastcall qword_388(__int64 a1, __int64 a2, __int64 a3)
                         /*
                         GenerateBeep(5);
 
-                        unsigned __int64 v3 = __readmsr(0xC0010015);
+                        unsigned __int64 v3 = __readmsr(MSR_K7_HWCR);
                         if ( !(v3 & 1) )
                         {
-                                __writemsr(0xC0010015, v3 | 1);
+                                __writemsr(MSR_K7_HWCR, v3 | 1);
 
-                                //  gSMST->NumberOfCpus
-                                for (QWORD i = 1; i < *(QWORD *)(gSMST + 0x80); ++i )
-                                        // SmmStartupThisAp(PVOID Procedure, UINT64 CpuNumber, VOID **ProcArguments)
-                                        // gSMST->SmmStartupThisAp(&dword_244, i, 0i64);
-                                        (*(void (__fastcall **)(QWORD, unsigned __int64, QWORD))(gSMST + 0x70))((QWORD)dword_244, i, 0i64);
-
+								// Trigger SmmHandler for each CPU
+								for (QWORD i = 1; i < gSMST->NumberOfCpus; ++i)
+									gSMST->SmmStartupThisAp(&dword_244, i, NULL);
                         }
-                        */
+                        
                         return 0;
+						*/
                 }
         }
         return 0;
@@ -94,16 +94,16 @@ __int64 __fastcall qword_388(__int64 a1, __int64 a2, __int64 a3)
 
 BOOLEAN pm_read(QWORD address, VOID *buffer, QWORD length)
 {
-        if (address < map_begin)
-                return 0;
+    if (address < map_begin)
+		return 0;
         
-        if ((address + length) > map_end)
-               return 0;
+    if ((address + length) > map_end)
+		return 0;
         
 	for (QWORD i = 0; i < length; i++)
 		*(unsigned char*)(((QWORD)buffer + i)) = *(unsigned char*)(((QWORD)address + i));
 
-        return 1;
+	return 1;
 }
 
 unsigned short pm_read_i16(QWORD address)
@@ -129,16 +129,16 @@ QWORD pm_read_i64(QWORD address)
 
 BOOLEAN pm_write(QWORD address, VOID *buffer, QWORD length)
 {
-        if (address < map_begin)
-                return 0;
+    if (address < map_begin)
+		return 0;
         
-        if ((address + length) > map_end)
-               return 0;
+	if ((address + length) > map_end)
+		return 0;
         
 	for (QWORD i = 0; i < length; i++)
 		*(unsigned char*)(((QWORD)address + i)) = *(unsigned char*)(((QWORD)buffer + i));
 
-        return 1;
+	return 1;
 }
 
 static QWORD pm_translate(QWORD dir, QWORD va)
@@ -178,8 +178,7 @@ QWORD vm_get_export_ex(QWORD cr3, BOOLEAN wow64, QWORD module, DWORD crc, DWORD 
 		a0 = pm_read_i32(pm_translate(cr3, module + a1[2] + (a1[0] * 4)));
 		pm_read(pm_translate(cr3, module + a0), &a2, sizeof(a2));
 		if (crc32((CHAR8*)a2, length, g_encryption_key) == crc)
-			return (module + pm_read_i32(pm_translate(cr3, module + a1[1] +
-				(pm_read_i16(pm_translate(cr3,module + a1[3] + (a1[0] * 2))) * 4))));
+			return (module + pm_read_i32(pm_translate(cr3, module + a1[1] + (pm_read_i16(pm_translate(cr3,module + a1[3] + (a1[0] * 2))) * 4))));
 	}
 	return 0;
 }
@@ -281,13 +280,12 @@ QWORD vm_get_module(DWORD crc, DWORD length)
 		return 0;
 
 	a1 = vm_read_i64(vm_read_i64(peb + a0[1], a0[0]) + a0[2], a0[0]);
+	if (a1 == 0)
+		return 0;
 
-        if (a1 == 0)
-                return 0;
-
-	a2 = a2 = vm_read_i64(a1 + a0[0], a0[0]);
-        if (a2 == 0)
-                return 0;
+	a2 = vm_read_i64(a1 + a0[0], a0[0]);
+	if (a2 == 0)
+		return 0;
 
 	while (a1 != a2) {
 		vm_read(vm_read_i64(a1 + a0[3], a0[0]), a3, length);
@@ -318,136 +316,137 @@ BOOLEAN cs_SetConVarFloat(DWORD convar, DWORD value)
 BOOLEAN gPatchIsDone;
 EFI_HANDLE EfiMainHandlerHandle;
 
-EFI_STATUS EFIAPI EfiMainHandler(
+EFI_STATUS 
+EFIAPI 
+EfiMainHandler(
   IN EFI_HANDLE  DispatchHandle,
   IN CONST VOID  *Context         OPTIONAL,
   IN OUT VOID    *CommBuffer      OPTIONAL,
   IN OUT UINTN   *CommBufferSize  OPTIONAL
-  )
-{
-
+) {
         if (!gInOs) {
+			EFI_SMM_CPU_PROTOCOL *SmmCpu = NULL;
+			EFI_SMM_SYSTEM_TABLE2 *SMST = (EFI_SMM_SYSTEM_TABLE2 *)gSMST;
 
-                EFI_SMM_CPU_PROTOCOL *SmmCpu = NULL;
-                EFI_SMM_SYSTEM_TABLE2 *SMST = (EFI_SMM_SYSTEM_TABLE2 *)gSMST;
+			EFI_STATUS Status;
+			Status = SMST->SmmLocateProtocol(&gEfiSmmCpuProtocolGuid, NULL, (VOID **)&SmmCpu);
+			if (EFI_ERROR(Status))
+				return Status;
 
-                if (EFI_ERROR(SMST->SmmLocateProtocol(&gEfiSmmCpuProtocolGuid, NULL, (VOID **)&SmmCpu)))
-                        return 0;
+			UINTN cr3;
+			Status = SmmCpu->ReadSaveState(SmmCpu, sizeof(cr3), EFI_SMM_SAVE_STATE_REGISTER_CR3, SMST->CurrentlyExecutingCpu, (VOID *)&cr3);
+			if (EFI_ERROR(Status))
+				return Status;
 
-                UINTN cr3;
-                if (EFI_ERROR(SmmCpu->ReadSaveState(SmmCpu,
-                        sizeof(cr3), EFI_SMM_SAVE_STATE_REGISTER_CR3, SMST->CurrentlyExecutingCpu, (VOID*)&cr3)))
-                        return 0;
+			if (cr3 == 0)
+				return EFI_NOT_FOUND;
 
-                if (cr3 == 0)
-                        return 0;
+			system_cr3 = *(QWORD*)(0x10A0);
+			ntoskrnl = *(QWORD*)(0x1070);
+			if (system_cr3 == 0)
+				return EFI_NOT_FOUND;
 
-                system_cr3 = *(QWORD*)(0x10A0);
-                ntoskrnl = *(QWORD*)(0x1070);
-                if (system_cr3 == 0)
-                        return 0;
+			if (system_cr3 != cr3 || ntoskrnl == 0)
+				return EFI_ABORTED;
 
-                if (system_cr3 != cr3 || ntoskrnl == 0)
-                        return 0;
+			ntoskrnl = ntoskrnl &~(QWORD)(0xfffff);
+			ntoskrnl -= 0x300000;
 
-                ntoskrnl = ntoskrnl &~(QWORD)(0xfffff);
-                ntoskrnl -= 0x300000;
-
-                if (ntoskrnl == 0xffffffffffd00000)
-                        return 0;
+		    if (ntoskrnl == 0xffffffffffd00000)
+				return EFI_ABORTED;
                         
-                QWORD translate_address = pm_translate(system_cr3, ntoskrnl);
-                if (translate_address == 0)
-                        return 0;
+			QWORD translate_address = pm_translate(system_cr3, ntoskrnl);
+			if (translate_address == 0)
+	            return EFI_ABORTED;
 
-                if (*(unsigned short*)translate_address != 0x5a4d)
-                        return 0;
+			if (*(unsigned short*)translate_address != 0x5a4d)
+				return EFI_NOT_FOUND;
 
-                PsInitialSystemProcess = vm_get_export_ex(system_cr3, 0, ntoskrnl, 0xf5acb841, 23);
-                if (PsInitialSystemProcess == 0)
-                        return 0;
+			PsInitialSystemProcess = vm_get_export_ex(system_cr3, 0, ntoskrnl, 0xf5acb841, 23);
+			if (PsInitialSystemProcess == 0)
+				return EFI_NOT_FOUND;
 
-                QWORD PsGetProcessId = vm_get_export_ex(system_cr3, 0, ntoskrnl, 0xed22fc88, 15);
-                QWORD PsGetProcessExitProcessCalled = vm_get_export_ex(system_cr3, 0, ntoskrnl, 0xc1f02136, 30);
-                QWORD PsGetProcessImageFileName = vm_get_export_ex(system_cr3, 0, ntoskrnl, 0x99b8d0bd, 26);
-                QWORD PsGetProcessWow64Process = vm_get_export_ex(system_cr3, 0, ntoskrnl, 0xb3862449, 25);
-                QWORD PsGetProcessPeb = vm_get_export_ex(system_cr3, 0, ntoskrnl, 0xc4c46f56, 16);
+			QWORD PsGetProcessId = vm_get_export_ex(system_cr3, 0, ntoskrnl, 0xed22fc88, 15);
+			QWORD PsGetProcessExitProcessCalled = vm_get_export_ex(system_cr3, 0, ntoskrnl, 0xc1f02136, 30);
+			QWORD PsGetProcessImageFileName = vm_get_export_ex(system_cr3, 0, ntoskrnl, 0x99b8d0bd, 26);
+			QWORD PsGetProcessWow64Process = vm_get_export_ex(system_cr3, 0, ntoskrnl, 0xb3862449, 25);
+			QWORD PsGetProcessPeb = vm_get_export_ex(system_cr3, 0, ntoskrnl, 0xc4c46f56, 16);
 
-                offset_PsGetProcessExitProcessCalled = *(unsigned int*)(pm_translate(system_cr3, PsGetProcessExitProcessCalled + 2));
-                offset_PsGetProcessImageFileName = *(unsigned int*)(pm_translate(system_cr3, PsGetProcessImageFileName + 3));
-                offset_ActiveProcessLinks = *(unsigned int*)(pm_translate(system_cr3, PsGetProcessId + 3)) + 8;
-                offset_PsGetProcessWow64Process = *(unsigned int*)(pm_translate(system_cr3, PsGetProcessWow64Process + 3));
-                offset_PsGetProcessPeb = *(unsigned int*)(pm_translate(system_cr3, PsGetProcessPeb + 3));
-                gInOs = 1;
+			offset_PsGetProcessExitProcessCalled = *(unsigned int*)(pm_translate(system_cr3, PsGetProcessExitProcessCalled + 2));
+		    offset_PsGetProcessImageFileName = *(unsigned int*)(pm_translate(system_cr3, PsGetProcessImageFileName + 3));
+			offset_ActiveProcessLinks = *(unsigned int*)(pm_translate(system_cr3, PsGetProcessId + 3)) + 8;
+		    offset_PsGetProcessWow64Process = *(unsigned int*)(pm_translate(system_cr3, PsGetProcessWow64Process + 3));
+	        offset_PsGetProcessPeb = *(unsigned int*)(pm_translate(system_cr3, PsGetProcessPeb + 3));
+            gInOs = TRUE;
         }
 
         if (gInOs) {
-		if (gPatchIsDone && g_process) {
-			if (get_process_by_name(0x567c44c0, 9) == g_process)
-				return 0;
-			gPatchIsDone = 0;
-		}
+			if (gPatchIsDone && g_process) {
+				if (get_process_by_name(0x567c44c0, 9) == g_process)
+					return EFI_SUCCESS;
+				gPatchIsDone = FALSE;
+			}
 
-                g_process = get_process_by_name(0x567c44c0, 9);
-                if (g_process == 0)
-                        return EFI_SUCCESS;
+            g_process = get_process_by_name(0x567c44c0, 9);
+            if (g_process == 0)
+				return EFI_SUCCESS;
                 
-                g_process_peb = pm_read_i64(pm_translate(system_cr3, g_process + offset_PsGetProcessWow64Process));
-                g_process_cr3 = pm_read_i64(pm_translate(system_cr3, g_process + 0x28));
-                if (g_process_peb) {
-                        g_process_peb = pm_read_i64(pm_translate(system_cr3, g_process_peb));
-                        g_process_wow64 = 1;
-                } else {
-			g_process_peb = pm_read_i64(pm_translate(system_cr3, g_process + offset_PsGetProcessPeb));
-			g_process_wow64 = 0;
-                }
+			g_process_peb = pm_read_i64(pm_translate(system_cr3, g_process + offset_PsGetProcessWow64Process));
+			g_process_cr3 = pm_read_i64(pm_translate(system_cr3, g_process + 0x28));
+			if (g_process_peb) {
+				g_process_peb = pm_read_i64(pm_translate(system_cr3, g_process_peb));
+				g_process_wow64 = TRUE;
+		    } else {
+				g_process_peb = pm_read_i64(pm_translate(system_cr3, g_process + offset_PsGetProcessPeb));
+				g_process_wow64 = FALSE;
+            }
 
-                if (g_process_peb == 0)
-                        return EFI_SUCCESS;
+			if (g_process_peb == 0)
+				return EFI_NOT_FOUND;
 
 
-		DWORD vstdlib = (DWORD)vm_get_module(0xdffb8bb7, 24);
-		if (vstdlib == 0)
-			return EFI_SUCCESS;
+			DWORD vstdlib = (DWORD)vm_get_module(0xdffb8bb7, 24);
+			if (vstdlib == 0)
+				return EFI_NOT_FOUND;
 		
 		
-		DWORD vstdlib_factory = vstdlib;
+			DWORD vstdlib_factory = vstdlib;
 		
-		vstdlib_factory += 0x1000; // .text begin
-		vstdlib_factory += 0x0050; // target function begin
-		vstdlib_factory = vstdlib_factory + vm_read_i32(vstdlib_factory + 1) + 5;
-		vstdlib_factory += 0xEA;
-		vstdlib_factory += 0x01;
+			vstdlib_factory += 0x1000; // .text begin
+			vstdlib_factory += 0x0050; // target function begin
+			vstdlib_factory = vstdlib_factory + vm_read_i32(vstdlib_factory + 1) + 5;
+			vstdlib_factory += 0xEA;
+			vstdlib_factory += 0x01;
 
-		DWORD tmp = vm_read_i32(vstdlib_factory);
+			DWORD tmp = vm_read_i32(vstdlib_factory);
 
-		if (vm_read_i32(vm_read_i32(vm_read_i32(tmp + 0x34)) + 0x4)) {
-			vstdlib_factory = tmp;
-		} else {
-			vstdlib_factory += 0x232B;
-			vstdlib_factory = vm_read_i32(vstdlib_factory);
-			if (vm_read_i32(vm_read_i32(vm_read_i32(vstdlib_factory + 0x34)) + 0x4) == 0)
-				vstdlib_factory = vm_read_i32(vstdlib + 0x3310 + 1);
-		}
+			if (vm_read_i32(vm_read_i32(vm_read_i32(tmp + 0x34)) + 0x4)) {
+				vstdlib_factory = tmp;
+			} else {
+				vstdlib_factory += 0x232B;
+				vstdlib_factory = vm_read_i32(vstdlib_factory);
+				if (vm_read_i32(vm_read_i32(vm_read_i32(vstdlib_factory + 0x34)) + 0x4) == 0)
+					vstdlib_factory = vm_read_i32(vstdlib + 0x3310 + 1);
+			}
 
-		DWORD convar_factory = vm_read_i32(vstdlib_factory + 0x34);
-		convar_factory = vm_read_i32(convar_factory);
-		convar_factory = vm_read_i32(convar_factory + 0x4);
-
-		while (convar_factory != 0) {
-			CHAR8 buffer[14];
-			vm_read(vm_read_i32(convar_factory + 0x0C), (char *)buffer, 14);
-			if (crc32((CHAR8*)buffer, 14, g_encryption_key) == 0xb332a0d1)
-				break;
+			DWORD convar_factory = vm_read_i32(vstdlib_factory + 0x34);
+			convar_factory = vm_read_i32(convar_factory);
 			convar_factory = vm_read_i32(convar_factory + 0x4);
-		}
+
+			while (convar_factory != 0) {
+				CHAR8 buffer[14];
+				vm_read(vm_read_i32(convar_factory + 0x0C), (char *)buffer, 14);
+				if (crc32((CHAR8*)buffer, 14, g_encryption_key) == 0xb332a0d1)
+					break;
+				convar_factory = vm_read_i32(convar_factory + 0x4);
+			}
 		
-		if (convar_factory == 0)
-			return 0;
+			if (convar_factory == 0)
+				return EFI_NOT_FOUND;
 		
-		cs_SetConVarInt(convar_factory, 1);
+			cs_SetConVarInt(convar_factory, 1);
 		
-		gPatchIsDone = 1;
+			gPatchIsDone = TRUE;
         }
         return EFI_SUCCESS;
 }
@@ -483,9 +482,7 @@ BOOLEAN GetPhysicalMemoryRanges(QWORD *start_address, QWORD *end_address)
 
 	UINT32 descriptor_count = (UINT32)map_size / (UINT32)descriptor_size;
 
-	EFI_MEMORY_DESCRIPTOR *entry_last = (EFI_MEMORY_DESCRIPTOR*)(
-		(char *)map + (  (descriptor_count - 1) * descriptor_size)
-		);
+	EFI_MEMORY_DESCRIPTOR *entry_last = (EFI_MEMORY_DESCRIPTOR*)((char *)map + (  (descriptor_count - 1) * descriptor_size));
 
 	if (start_address)
 		*start_address = 0x1000; // windows memory map always starts from 0x1000
@@ -499,60 +496,47 @@ BOOLEAN GetPhysicalMemoryRanges(QWORD *start_address, QWORD *end_address)
 }
 
 
-EFI_STATUS EFIAPI EfiMain(IN EFI_LOADED_IMAGE *LoadedImage, IN EFI_SYSTEM_TABLE *SystemTable)
-{
+EFI_STATUS 
+EFIAPI 
+EfiMain(
+	IN EFI_LOADED_IMAGE *LoadedImage, 
+	IN EFI_SYSTEM_TABLE *SystemTable
+) {
 	gRT = SystemTable->RuntimeServices;
 	gBS = SystemTable->BootServices;
 	gST = SystemTable;
 
+	EFI_STATUS Status;
+
 	if (!GetPhysicalMemoryRanges(&map_begin, &map_end))
 		return 0;
+
+	Status = gBS->LocateProtocol(&gEfiSmmBase2ProtocolGuid, NULL, (void**)&gSmmBase2Protocol);
+	if (EFI_ERROR(Status))
+		return Status;
+
+	// Locate SMM system table
+	Status = gSmmBase2Protocol->GetSmstLocation(gSmmBase2Protocol, (EFI_SMM_SYSTEM_TABLE2 *)&gSMST);
+	if (EFI_ERROR(Status))
+		return Status;
+
+	// Locate SW Dispatch protocol to register SW SMI Handler
+	Status = gSMST->SmmLocateProtocol(&gEfiSmmSwDispatch2ProtocolGuid, NULL, (VOID**)&gSmmSwDispatch2Protocol);
+	if (EFI_ERROR(Status))
+		return Status;
 	
-	if (EFI_ERROR(gBS->LocateProtocol(&gEfiSmmBase2ProtocolGuid, 0, (void **)&gSmmBase2Protocol)))
-		return 0;
-
-
-        /*
-        * gSmmBase2Protocol->GetSmstLocation(
-        *      gSmmBase2Protocol,
-        *      (EFI_SMM_SYSTEM_TABLE2 *)&gSMST)
-        */
-	(*(void (__fastcall **)(__int64, __int64 *))(gSmmBase2Protocol + 0x08))(gSmmBase2Protocol, &gSMST);
-	if (gSMST == 0)
-		return 0;
-
-        /* gSMST->SmmLocateProtocol(
-         *      &gEfiSmmSwDispatch2ProtocolGuid,
-         *      0,
-         *      (EFI_SMM_SW_DISPATCH2_PROTOCOL *)&gSmmSwDispatch2Protocol)
-         */
-	if (EFI_ERROR((*(EFI_STATUS (__fastcall **)(EFI_GUID *, QWORD, __int64 *))(gSMST + 0x0D0))(
-		&gEfiSmmSwDispatch2ProtocolGuid,
-		0,
-		(__int64 *)&gSmmSwDispatch2Protocol)))
-		return 0;
-
-        /*
-         *  gSmmSwDispatch2Protocol->Register(gSmmSwDispatch2Protocol,
-         *          qword_388, 
-         *          &SW_SMI_VAL (0x56),
-         *          &v24 (0x00));
-        */
-
-	
+	// Register SW SMI handler
 	QWORD val = SW_SMI_VAL;
 	QWORD buf = 0;
-	(*(__int64 (__fastcall **)(__int64, __int64 *, __int64 *, __int64 *))gSmmSwDispatch2Protocol)(
-		gSmmSwDispatch2Protocol,
-		(__int64 *)qword_388,
-		&val,
-		&buf);
-	
+	Status = gSmmSwDispatch2Protocol->Register(gSmmSwDispatch2Protocol, qword_388, &val, &buf);
+	if (EFI_ERROR(Status))
+		return Status;
 
-        struct _EFI_SMM_SYSTEM_TABLE2 *tbl = (struct _EFI_SMM_SYSTEM_TABLE2*)gSMST;
-        tbl->SmiHandlerRegister(EfiMainHandler, 0, &EfiMainHandlerHandle);
+	Status = gSMST->SmiHandlerRegister(EfiMainHandler, NULL, &EfiMainHandlerHandle);
+	if (EFI_ERROR(Status))
+		return Status;
 
-	return 0;
+	return EFI_SUCCESS;
 }
 
 
@@ -617,12 +601,12 @@ __int64 __fastcall qword_388(__int64 a1, __int64 a2, __int64 a3)
   {
     if ( *(_BYTE *)(a3 + 8) == 0x56 )
     {
-      v3 = __readmsr(0xC0010015);
+      v3 = __readmsr(MSR_K7_HWCR);
       if ( !(v3 & 1) )
       {
-        __writemsr(0xC0010015, v3 | 1);
-        for ( i = 1i64; i < *(_QWORD *)(qword_520 + 128); ++i )
-          (*(void (__fastcall **)(int *, unsigned __int64, _QWORD))(qword_520 + 112))(&dword_244, i, 0i64);
+        __writemsr(MSR_K7_HWCR, v3 | 1);
+        for (QWORD i = 1; i < gSMST->NumberOfCpus; ++i)
+			gSMST->SmmStartupThisAp(&dword_244, i, NULL);
       }
     }
   }
