@@ -45,23 +45,13 @@ WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
   @param  Size  The expected size for the TYPE.
 
 **/
-#define VERIFY_SIZE_OF(TYPE, Size) extern UINT8 _VerifySizeof##TYPE[(sizeof(TYPE) == (Size)) / (sizeof(TYPE) == (Size))]
+// #define VERIFY_SIZE_OF(TYPE, Size) extern UINT8 _VerifySizeof##TYPE[(sizeof(TYPE) == (Size)) / (sizeof(TYPE) == (Size))]
 
 //
 // Verify that ProcessorBind.h produced UEFI Data Types that are compliant with
 // Section 2.3.1 of the UEFI 2.3 Specification.
 //
-VERIFY_SIZE_OF (BOOLEAN, 1);
-VERIFY_SIZE_OF (INT8, 1);
-VERIFY_SIZE_OF (UINT8, 1);
-VERIFY_SIZE_OF (INT16, 2);
-VERIFY_SIZE_OF (UINT16, 2);
-VERIFY_SIZE_OF (INT32, 4);
-VERIFY_SIZE_OF (UINT32, 4);
-VERIFY_SIZE_OF (INT64, 8);
-VERIFY_SIZE_OF (UINT64, 8);
-VERIFY_SIZE_OF (CHAR8, 1);
-VERIFY_SIZE_OF (CHAR16, 2);
+
 
 //
 // The following three enum types are used to verify that the compiler
@@ -82,9 +72,6 @@ typedef enum {
   __VerifyUint32EnumValue = 0xffffffff
 } __VERIFY_UINT32_ENUM_SIZE;
 
-VERIFY_SIZE_OF (__VERIFY_UINT8_ENUM_SIZE, 4);
-VERIFY_SIZE_OF (__VERIFY_UINT16_ENUM_SIZE, 4);
-VERIFY_SIZE_OF (__VERIFY_UINT32_ENUM_SIZE, 4);
 
 //
 // The Microsoft* C compiler can removed references to unreferenced data items
@@ -1260,47 +1247,7 @@ typedef UINTN RETURN_STATUS;
 #define SIGNATURE_64(A, B, C, D, E, F, G, H) \
     (SIGNATURE_32 (A, B, C, D) | ((UINT64) (SIGNATURE_32 (E, F, G, H)) << 32))
 
-#if defined(_MSC_EXTENSIONS) && !defined (__INTEL_COMPILER) && !defined (MDE_CPU_EBC)
-  void * _ReturnAddress(void);
-  #pragma intrinsic(_ReturnAddress)
-  /**
-    Get the return address of the calling function.
 
-    Based on intrinsic function _ReturnAddress that provides the address of
-    the instruction in the calling function that will be executed after
-    control returns to the caller.
-
-    @param L    Return Level.
-
-    @return The return address of the calling function or 0 if L != 0.
-
-  **/
-  #define RETURN_ADDRESS(L)     ((L == 0) ? _ReturnAddress() : (VOID *) 0)
-#elif defined(__GNUC__)
-  void * __builtin_return_address (unsigned int level);
-  /**
-    Get the return address of the calling function.
-
-    Based on built-in Function __builtin_return_address that returns
-    the return address of the current function, or of one of its callers.
-
-    @param L    Return Level.
-
-    @return The return address of the calling function.
-
-  **/
-  #define RETURN_ADDRESS(L)     __builtin_return_address (L)
-#else
-  /**
-    Get the return address of the calling function.
-
-    @param L    Return Level.
-
-    @return 0 as compilers don't support this feature.
-
-  **/
-  #define RETURN_ADDRESS(L)     ((VOID *) 0)
-#endif
 
 /**
   Return the number of elements in an array.

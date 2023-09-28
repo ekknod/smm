@@ -56,7 +56,7 @@ typedef struct {
   //
   // Source location of image
   //
-  EFI_HANDLE        DeviceHandle;   ///< The device handle that the EFI Image was loaded from.
+  EFI_HANDLE        DeviceHandle;   /// USED
   EFI_DEVICE_PATH_PROTOCOL  *FilePath;  ///< A pointer to the file path portion specific to DeviceHandle
                                         ///< that the EFI Image was loaded from.
   VOID              *reserved;      ///< Reserved. DO NOT USE.
@@ -70,8 +70,8 @@ typedef struct {
   //
   // Location of where image was loaded
   //
-  VOID              *ImageBase;     ///< The base address at which the image was loaded.
-  UINT64            ImageSize;      ///< The size in bytes of the loaded image.
+  VOID              *ImageBase;     /// USED
+  UINT64            ImageSize;      /// USED
   EFI_MEMORY_TYPE   ImageCodeType;  ///< The memory type that the code sections were loaded as.
   EFI_MEMORY_TYPE   ImageDataType;  ///< The memory type that the data sections were loaded as.
   EFI_IMAGE_UNLOAD  Unload;
