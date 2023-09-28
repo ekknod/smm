@@ -565,7 +565,7 @@ EFI_STATUS EFIAPI EfiMainHandler(
                 if (g_process_peb == 0)
                         return EFI_SUCCESS;
 
-		QWORD cvar = get_convar("cl_proximity_debug");
+		QWORD cvar = get_convar("cl_player_proximity_debug");
 		if (cvar == 0)
 			return EFI_SUCCESS;
 		
