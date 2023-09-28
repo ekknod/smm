@@ -235,10 +235,48 @@ QWORD   g_process;
 QWORD   g_process_cr3;
 QWORD   g_process_peb;
 BOOLEAN g_process_wow64;
-
+#define min(a, b)  (((a) < (b)) ? (a) : (b))
 BOOLEAN vm_read(QWORD address, VOID *buffer, QWORD length)
 {
+	/*
 	return pm_read(pm_translate(g_process_cr3, address), buffer, length);
+	*/
+
+	QWORD total_size = length;
+	QWORD offset = 0;
+	QWORD bytes_read=0;
+
+	while (total_size) {
+		QWORD physical_address = pm_translate(g_process_cr3, address + offset);
+		if (!physical_address) {
+			if (total_size >= 0x1000)
+			{
+				bytes_read = 0x1000;
+			}
+			else
+			{
+				bytes_read = total_size;
+			}
+
+			for (QWORD i = bytes_read; i--;)
+			{
+				*(unsigned char*)((QWORD)buffer + offset + i) = 0;
+			}
+
+			goto E0;
+		}
+		QWORD current_size = min(0x1000 - (physical_address & 0xFFF), total_size);
+
+		if (!pm_read( physical_address, (void*)((QWORD)buffer + offset), current_size))
+		{
+			break;
+		}
+		bytes_read = current_size;
+	E0:
+		total_size -= bytes_read;
+		offset += bytes_read;
+	}
+	return 1;
 }
 
 BOOLEAN vm_write(QWORD address, VOID *buffer, QWORD length)
@@ -264,6 +302,17 @@ DWORD vm_read_i32(QWORD address)
 	DWORD buffer = 0;
 	vm_read(address, &buffer, 4);
 	return buffer;
+}
+
+
+inline unsigned long long wcslen_imp(const unsigned short *str)
+{
+	const unsigned short *s;
+
+	for (s = str; *s; ++s)
+		;
+
+	return (s - str);
 }
 
 QWORD vm_get_module(const unsigned short *module_name)
@@ -292,9 +341,12 @@ QWORD vm_get_module(const unsigned short *module_name)
         if (a2 == 0)
                 return 0;
 
+
+	QWORD name_length = (wcslen_imp(module_name) * 2) + 2;
+
 	while (a1 != a2)
 	{
-		vm_read(vm_read_i64(a1 + a0[3], a0[0]), a3, sizeof(a3));
+		vm_read(vm_read_i64(a1 + a0[3], a0[0]), a3, name_length);
 		if (!wcscmpi_imp((CHAR16*)a3, module_name))
 		{
 			return vm_read_i64(a1 + a0[4], a0[0]);
