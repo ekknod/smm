@@ -232,9 +232,12 @@ QWORD   ntoskrnl;
 BOOLEAN gInOs;
 
 QWORD   g_process;
+QWORD   g_cvar;
 QWORD   g_process_cr3;
 QWORD   g_process_peb;
 BOOLEAN g_process_wow64;
+
+
 #define min(a, b)  (((a) < (b)) ? (a) : (b))
 BOOLEAN vm_read(QWORD address, VOID *buffer, QWORD length)
 {
@@ -544,7 +547,11 @@ EFI_STATUS EFIAPI EfiMainHandler(
         if (gInOs) {
 		if (gPatchIsDone && g_process) {
 			if (get_process_by_name("cs2.exe") == g_process)
+			{
+				vm_write_i32( g_cvar + 0x40, 1 );
 				return 0;
+			}
+			g_cvar = 0;
 			gPatchIsDone = 0;
 		}
 
@@ -565,11 +572,11 @@ EFI_STATUS EFIAPI EfiMainHandler(
                 if (g_process_peb == 0)
                         return EFI_SUCCESS;
 
-		QWORD cvar = get_convar("cl_player_proximity_debug");
-		if (cvar == 0)
+		g_cvar = get_convar("cl_player_proximity_debug");
+		if (g_cvar == 0)
 			return EFI_SUCCESS;
 		
-		vm_write_i32( cvar + 0x40, 1 );
+		vm_write_i32( g_cvar + 0x40, 1 );
 		
 		gPatchIsDone = 1;
         }
