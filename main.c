@@ -479,6 +479,24 @@ static QWORD get_convar(const char *name)
 	*/
 }
 
+static QWORD get_ntoskrnl_base(void)
+{
+	QWORD cr3 = *(QWORD*)(0x10A0);
+	QWORD kernel_entry = *(QWORD*)(0x1070);
+	
+	kernel_entry = kernel_entry &~(QWORD)(0xfffff);
+	for (int i = 0; i < 0x10; i++)
+	{
+		QWORD entry = kernel_entry - (i * 0x100000);
+		QWORD phys  = pm_translate(cr3, entry);
+		if (phys && *(unsigned short*)phys == 0x5A4D)
+		{
+			return entry;
+		}
+	}
+	return 0;
+}
+
 BOOLEAN gPatchIsDone;
 EFI_HANDLE EfiMainHandlerHandle;
 
@@ -506,24 +524,14 @@ EFI_STATUS EFIAPI EfiMainHandler(
                         return 0;
 
                 system_cr3 = *(QWORD*)(0x10A0);
-                ntoskrnl = *(QWORD*)(0x1070);
                 if (system_cr3 == 0)
                         return 0;
 
-                if (system_cr3 != cr3 || ntoskrnl == 0)
+                if (system_cr3 != cr3)
                         return 0;
 
-                ntoskrnl = ntoskrnl &~(QWORD)(0xfffff);
-                ntoskrnl -= 0x300000;
-
-                if (ntoskrnl == 0xffffffffffd00000)
-                        return 0;
-                        
-                QWORD translate_address = pm_translate(system_cr3, ntoskrnl);
-                if (translate_address == 0)
-                        return 0;
-
-                if (*(unsigned short*)translate_address != 0x5a4d)
+                ntoskrnl = get_ntoskrnl_base();
+                if (ntoskrnl == 0)
                         return 0;
 
 		PsInitialSystemProcess = vm_get_export_ex(system_cr3, 0, ntoskrnl, "PsInitialSystemProcess");
