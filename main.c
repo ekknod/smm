@@ -479,15 +479,17 @@ static QWORD get_convar(const char *name)
 	*/
 }
 
+
+#define LARGE_PAGE_SIZE SIZE_2MB
+#define PAGE_ALIGN_2MB(Va) ((VOID *)((QWORD)(Va) & ~(LARGE_PAGE_SIZE - 1)))
+
 static QWORD get_ntoskrnl_base(void)
 {
 	QWORD cr3 = *(QWORD*)(0x10A0);
-	QWORD kernel_entry = *(QWORD*)(0x1070);
-	
-	kernel_entry = kernel_entry &~(QWORD)(0xfffff);
+	QWORD kernel_entry = (QWORD)PAGE_ALIGN_2MB (*(QWORD*)(0x1070)) ;
 	for (int i = 0; i < 0x10; i++)
 	{
-		QWORD entry = kernel_entry - (i * 0x100000);
+		QWORD entry = kernel_entry - (i * LARGE_PAGE_SIZE);
 		QWORD phys  = pm_translate(cr3, entry);
 		if (phys && *(unsigned short*)phys == 0x5A4D)
 		{
